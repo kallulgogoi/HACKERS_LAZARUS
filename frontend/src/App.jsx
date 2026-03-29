@@ -21,10 +21,12 @@ const App = () => {
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [telemetry, setTelemetry] = useState([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Debounce state
+  const [inputValue, setInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Pagination & Infinite Scroll States
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const observer = useRef();
@@ -32,7 +34,24 @@ const App = () => {
 
   const API_BASE_URL = "http://127.0.0.1:8000";
 
-  // Optimized Fetch Logic
+  // Debounce the search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(inputValue);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [inputValue]);
+
+  const filteredPatients = useMemo(() => {
+    if (!searchQuery) return patients;
+    const lowerQuery = searchQuery.toLowerCase();
+    return patients.filter(
+      (p) =>
+        p.decoded_name.toLowerCase().includes(lowerQuery) ||
+        p.ghost_id.toLowerCase().includes(lowerQuery),
+    );
+  }, [patients, searchQuery]);
+
   const fetchPatients = useCallback(
     async (pageNum) => {
       if (isLoading || !hasMore) return;
@@ -48,9 +67,10 @@ const App = () => {
           ghost_id: p.patient_id,
           decoded_name: p.patient_name || "Unknown Identity",
           age: p.age,
-          ward: p.status || "Unassigned", // Mapped from backend status
+          ward: p.status || "Unassigned",
           bpm: p.hr_adjusted,
           spo2: p.spo2_adjusted,
+          scrambled_med: p.scrambled_med || "Vtyvshasv",
         }));
 
         if (data.length < 20) setHasMore(false);
@@ -64,12 +84,10 @@ const App = () => {
     [isLoading, hasMore],
   );
 
-  // Initial load
   useEffect(() => {
     if (patients.length === 0) fetchPatients(0);
   }, []);
 
-  // Intersection Observer for Infinite Scroll
   const lastPatientElementRef = useCallback(
     (node) => {
       if (isLoading) return;
@@ -77,10 +95,10 @@ const App = () => {
 
       observer.current = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting && hasMore) {
-          setPage((prevPage) => {
-            const nextPage = prevPage + 1;
-            fetchPatients(nextPage);
-            return nextPage;
+          setPage((prev) => {
+            const next = prev + 1;
+            fetchPatients(next);
+            return next;
           });
         }
       });
@@ -90,50 +108,37 @@ const App = () => {
     [isLoading, hasMore, fetchPatients],
   );
 
-  // Dynamic Triage Alert Logic
   const getAlertDetails = () => {
     if (!selectedPatient) return null;
-
-    // Severity mapping from backend status
     const severity = selectedPatient.ward;
 
     if (severity === "Critical") {
       return {
-        color: "bg-destructive animate-pulse",
-        icon: <AlertTriangle className="h-6 w-6" />,
-        title: "CRITICAL SYSTEM ANOMALY",
-        desc: `Immediate review required for ${selectedPatient.decoded_name}. Vitals: ${selectedPatient.bpm} BPM / ${selectedPatient.spo2}% SpO2.`,
+        wrapper: "bg-red-500/10 border-red-500/30",
+        text: "text-red-500",
+        icon: <AlertTriangle className="h-4 w-4" />,
+        label: "CRITICAL",
+        desc: "Vitals exceed safety thresholds. Immediate review required.",
       };
     }
-
     if (severity === "Warning") {
       return {
-        color: "bg-yellow-600",
-        icon: <AlertCircle className="h-6 w-6" />,
-        title: "PHYSIOLOGICAL WARNING",
-        desc: `Monitoring unstable vitals for ${selectedPatient.decoded_name}. Trend analysis suggested.`,
+        wrapper: "bg-amber-500/10 border-amber-500/30",
+        text: "text-amber-500",
+        icon: <AlertCircle className="h-4 w-4" />,
+        label: "WARNING",
+        desc: "Unstable biometric sequence detected. Monitor closely.",
       };
     }
-
     return null;
   };
 
   const alert = getAlertDetails();
 
-  // Scroll to Top on Patient Change
   useEffect(() => {
-    if (scrollContainerRef.current) {
+    if (scrollContainerRef.current)
       scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
-    }
   }, [selectedPatient?.ghost_id]);
-
-  const filteredPatients = useMemo(() => {
-    return patients.filter(
-      (p) =>
-        p.decoded_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.ghost_id.toLowerCase().includes(searchQuery.toLowerCase()),
-    );
-  }, [searchQuery, patients]);
 
   useEffect(() => {
     if (!selectedPatient) return;
@@ -147,17 +152,16 @@ const App = () => {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* DESKTOP SIDEBAR */}
       <div className="hidden md:flex">
         <Sidebar
           patients={filteredPatients}
           onSelect={(p) => {
             setSelectedPatient(p);
-            setSearchQuery("");
+            setInputValue("");
           }}
           selectedId={selectedPatient?.ghost_id}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
+          searchQuery={inputValue}
+          setSearchQuery={setInputValue}
           lastElementRef={lastPatientElementRef}
         />
       </div>
@@ -166,17 +170,67 @@ const App = () => {
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto relative"
       >
-        {/* DYNAMIC STICKY ALERT */}
+        <div className="sticky top-0 z-[60] bg-background border-b px-4 md:px-8 py-4">
+          <div className="flex items-center justify-between max-w-6xl mx-auto">
+            <div className="flex items-center gap-4">
+              <div className="md:hidden">
+                <Sheet
+                  open={isMobileMenuOpen}
+                  onOpenChange={setIsMobileMenuOpen}
+                >
+                  <SheetTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="relative z-[70]"
+                    >
+                      <Menu className="h-5 w-5" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="p-0 w-80">
+                    <Sidebar
+                      patients={filteredPatients}
+                      onSelect={(p) => {
+                        setSelectedPatient(p);
+                        setIsMobileMenuOpen(false);
+                        setInputValue("");
+                      }}
+                      selectedId={selectedPatient?.ghost_id}
+                      searchQuery={inputValue}
+                      setSearchQuery={setInputValue}
+                      lastElementRef={lastPatientElementRef}
+                    />
+                  </SheetContent>
+                </Sheet>
+              </div>
+              <h1 className="text-xl md:text-2xl font-bold tracking-tight uppercase">
+                Project <span className="text-primary italic">Lazarus</span>
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              {isLoading && (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+              <Activity className="h-4 w-4 text-primary animate-pulse" />
+            </div>
+          </div>
+        </div>
+
         {alert && (
           <div
-            className={`sticky top-0 z-50 w-full ${alert.color} text-white px-4 py-3 shadow-xl flex items-center justify-center gap-3 border-b-2 border-black/20 animate-in slide-in-from-top duration-300`}
+            className={`w-full border-b px-4 md:px-8 py-2.5 ${alert.wrapper}`}
           >
-            {alert.icon}
-            <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-4 text-center">
-              <span className="font-black text-lg uppercase tracking-tighter italic">
-                {alert.title}
+            <div className="max-w-6xl mx-auto flex items-center gap-3">
+              <div className={`${alert.text} flex items-center gap-2`}>
+                {alert.icon}
+                <span className="text-[11px] font-mono font-bold uppercase tracking-widest">
+                  {alert.label}
+                </span>
+              </div>
+              <span className="text-muted-foreground hidden sm:inline opacity-50">
+                |
               </span>
-              <span className="text-sm font-medium opacity-90">
+              <span className="text-xs font-medium text-foreground/80">
                 {alert.desc}
               </span>
             </div>
@@ -184,100 +238,23 @@ const App = () => {
         )}
 
         <div className="container mx-auto p-4 md:p-8 space-y-6 max-w-6xl">
-          <div className="flex flex-col gap-4 border-b pb-4 md:border-none">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="md:hidden">
-                  <Sheet
-                    open={isMobileMenuOpen}
-                    onOpenChange={setIsMobileMenuOpen}
-                  >
-                    <SheetTrigger asChild>
-                      <Button variant="outline" size="icon">
-                        <Menu className="h-5 w-5" />
-                      </Button>
-                    </SheetTrigger>
-                    <SheetContent side="left" className="p-0 w-80">
-                      <Sidebar
-                        patients={filteredPatients}
-                        onSelect={(p) => {
-                          setSelectedPatient(p);
-                          setIsMobileMenuOpen(false);
-                          setSearchQuery("");
-                        }}
-                        selectedId={selectedPatient?.ghost_id}
-                        searchQuery={searchQuery}
-                        setSearchQuery={setSearchQuery}
-                        lastElementRef={lastPatientElementRef}
-                      />
-                    </SheetContent>
-                  </Sheet>
-                </div>
-                <h1 className="text-xl md:text-3xl font-bold tracking-tight">
-                  Project{" "}
-                  <span className="text-primary tracking-tighter uppercase">
-                    Lazarus
-                  </span>
-                </h1>
-              </div>
-              <div className="flex items-center gap-2">
-                {isLoading && (
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                )}
-                <Activity className="h-4 w-4 text-muted-foreground animate-pulse" />
-              </div>
-            </div>
-
-            {/* MOBILE QUICK SEARCH */}
-            <div className="relative md:hidden">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Quick search..."
-                className="pl-9 bg-muted/50"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
           {selectedPatient ? (
-            <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="space-y-6 animate-in fade-in duration-300">
               <IdentityCard patient={selectedPatient} />
               <VitalsChart data={telemetry} />
-              <PharmacyPortal />
+              <PharmacyPortal patient={selectedPatient} />
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-6 px-4">
-              <Database className="h-12 w-12 text-primary opacity-80" />
-              <div className="max-w-sm space-y-2">
-                <h2 className="text-xl font-semibold uppercase tracking-tight">
-                  Forensic Registry Awaiting Data
-                </h2>
-                <div className="w-full max-w-md relative group mt-4">
-                  <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground group-focus-within:text-primary" />
-                  <Input
-                    placeholder="Search Reconstructed Identities..."
-                    className="pl-10 h-12 border-2 focus:ring-primary"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  {searchQuery && filteredPatients.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-2 bg-popover border rounded-lg shadow-2xl z-50 overflow-hidden text-left">
-                      {filteredPatients.slice(0, 5).map((p) => (
-                        <button
-                          key={p.ghost_id}
-                          onClick={() => setSelectedPatient(p)}
-                          className="w-full p-4 hover:bg-muted flex justify-between items-center border-b last:border-0"
-                        >
-                          <span className="font-medium">{p.decoded_name}</span>
-                          <span className="text-xs font-mono opacity-60 uppercase">
-                            {p.ghost_id}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center space-y-6">
+              <Database className="h-12 w-12 text-primary opacity-30" />
+              <div className="max-w-md w-full relative">
+                <Input
+                  placeholder="Search Reconstructed Identities..."
+                  className="pl-10 h-12 bg-muted/30"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                />
+                <Search className="absolute left-3 top-3.5 h-5 w-5 text-muted-foreground" />
               </div>
             </div>
           )}
