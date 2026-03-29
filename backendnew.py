@@ -10,6 +10,9 @@ class Patient(BaseModel):
     heart_rate: float = Field(alias="hr_adjusted")
     spo2: float = Field(alias="spo2_adjusted")
     status: Optional[str] = None
+    
+    hr_hex: Optional[str] = None
+    hr_decoded: Optional[float] = None
 
     class Config:
         populate_by_name = True
@@ -28,7 +31,6 @@ try:
     if 'patient_name' in df.columns:
         df['patient_name'] = df['patient_name'].astype(str).str.strip()
 
-
     if 'patient_id' in df.columns:
         df['patient_id'] = df['patient_id'].astype(str).str.strip()
 except FileNotFoundError:
@@ -37,7 +39,7 @@ except FileNotFoundError:
 def get_base_patient_id(pid: str) -> str:
     parts = pid.split("_")
     
-   
+  
     if (len(parts) >= 4 and len(parts) == 3):
         return f"{parts[0]}-{parts[1]}_{parts[2]}_{parts[3]}"
     
@@ -109,5 +111,26 @@ def get_patient_by_id_with_filters(
 
     if filtered.empty:
         raise HTTPException(status_code=404, detail="No records match these filters.")
+
+    return filtered.to_dict(orient="records")
+
+
+
+@app.get("/patients/{patient_id}/heart-rate-decoded", response_model=List[Patient])
+def get_patient_heart_rate_decoded(patient_id: str):
+    search_id = patient_id.strip()
+    base_search_id = get_base_patient_id(search_id)
+
+    mask = (df["patient_id"] == search_id) | (df["patient_id"].apply(get_base_patient_id) == base_search_id)
+    filtered = df[mask].copy()
+
+    if filtered.empty:
+        raise HTTPException(status_code=404, detail=f"Patient {search_id} not found.")
+
+
+    filtered['status'] = filtered.apply(status, axis=1) 
+    
+    filtered['hr_decoded'] = filtered['hr_adjusted']
+    filtered['hr_hex'] = filtered['hr_adjusted'].apply(lambda x: hex(int(x)) if pd.notnull(x) else "0x0")
 
     return filtered.to_dict(orient="records")
