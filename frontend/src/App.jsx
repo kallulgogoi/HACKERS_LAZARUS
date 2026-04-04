@@ -1,3 +1,4 @@
+import DecryptionTerminal from './components/DecryptionTerminal';
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Sidebar from "./components/Sidebar";
 import IdentityCard from "./components/IdentityCard";
@@ -252,6 +253,13 @@ const App = () => {
         <div className="container mx-auto p-4 md:p-8 space-y-6 max-w-6xl">
           {selectedPatient ? (
             <div className="space-y-6 animate-in fade-in duration-300">
+              
+              {/* LIVE DECRYPTION TERMINAL PLACEMENT */}
+              <DecryptionTerminal 
+                  corruptedText="VLOGHQDILO" 
+                  finalText="SILDENAFIL" 
+              />
+              
               <IdentityCard patient={selectedPatient} />
               <VitalsChart data={telemetry} />
               <PharmacyPortal patient={selectedPatient} />
