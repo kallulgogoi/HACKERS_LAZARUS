@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import pickle 
 
 class Patient(BaseModel):
     patient_id: str 
@@ -19,6 +20,12 @@ class Patient(BaseModel):
     class Config:
         from_attributes = True
 
+# <-- 2. ADDED SCHEMA FOR ML INFERENCE -->
+class VitalsInput(BaseModel):
+    age: int
+    hr_adjusted: float
+    spo2_adjusted: float
+
 app = FastAPI()
 
 app.add_middleware(
@@ -29,9 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- VERCEL PATH RESOLUTION ---
 current_dir = os.path.dirname(os.path.realpath(__file__))
 CSV_FILE = os.path.join(current_dir, "trustmeicandoit_data.csv")
 
+# <-- 3. ADDED PATHS FOR ML FILES -->
+GMM_MODEL_FILE = os.path.join(current_dir, "gmm_model.pkl")
+SCALER_FILE = os.path.join(current_dir, "scaler.pkl")
+
+# --- LOAD DATA ---
 try:
     df = pd.read_csv(CSV_FILE)
     df.columns = df.columns.str.strip()
@@ -55,6 +68,19 @@ except FileNotFoundError:
     print(f"Critical Error: {CSV_FILE} not found.")
     df = pd.DataFrame(columns=["patient_id", "patient_name", "age", "hr_adjusted", "spo2_adjusted"])
 
+# <-- 4. ADDED ML MODEL LOADING -->
+try:
+    with open(GMM_MODEL_FILE, 'rb') as f:
+        gmm_model = pickle.load(f)
+    with open(SCALER_FILE, 'rb') as f:
+        scaler = pickle.load(f)
+    print("Project Lazarus: Scaler and GMM Loaded Successfully.")
+except Exception as e:
+    print(f"ML Loading Error: {e}")
+    gmm_model = None
+    scaler = None
+
+
 def get_base_patient_id(pid: str) -> str:
     parts = pid.split("_")
     if (len(parts) >= 4 and len(parts) == 3):
@@ -67,7 +93,6 @@ def get_processed_df(dataframe):
     if dataframe.empty: return dataframe
     temp_df = dataframe.copy()
     temp_df['base_patient_id'] = temp_df['patient_id'].apply(get_base_patient_id)
-
 
     def best_index(group):
         if len(group) == 1: return group.index[0]
@@ -91,7 +116,7 @@ def status(row):
     else:
         return "Stable"
 
-
+# --- EXISTING ENDPOINTS ---
 @app.get("/patients", response_model=List[Patient])
 def get_all_patients(skip: int = 0, limit: int = 20):
     processed_df = get_processed_df(df)
@@ -146,3 +171,30 @@ def get_patient_heart_rate_decoded(patient_id: str):
     filtered['hr_hex'] = filtered['hr_adjusted'].apply(lambda x: hex(int(x)) if pd.notnull(x) else "0x0")
 
     return filtered.to_dict(orient="records")
+
+# <-- 5. ADDED NEW ML INFERENCE ENDPOINT -->
+@app.post("/predict")
+def predict_vitals(data: VitalsInput):
+    if gmm_model is None or scaler is None:
+        raise HTTPException(status_code=500, detail="ML Pipeline is offline or failed to load on Vercel.")
+    
+    try:
+        # Create DataFrame mimicking the format expected by your scaler
+        raw_input = pd.DataFrame([{
+            "age": data.age,
+            "hr_adjusted": data.hr_adjusted,
+            "spo2_adjusted": data.spo2_adjusted
+        }])
+        
+        # Scale the data first
+        scaled_features = scaler.transform(raw_input)
+        
+        # Make the prediction
+        prediction = gmm_model.predict(scaled_features)
+        
+        return {
+            "prediction": str(prediction[0]),
+            "status": "Forensic Inference Complete"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
