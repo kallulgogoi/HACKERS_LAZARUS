@@ -57,9 +57,8 @@ const App = () => {
   const observer = useRef();
   const scrollContainerRef = useRef(null);
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
-  const PHARMA_API_URL =
-    import.meta.env.VITE_PHARMA_URL || "http://127.0.0.1:8001";
+  const API_BASE_URL = "https://hackers-lazarus-1.onrender.com";
+  const PHARMA_API_URL = "https://hackers-lazarus-pharma.onrender.com";
   // const API_BASE_URL = "/api";
   // const PHARMA_API_URL = "/pharma";
   const [activeTab, setActiveTab] = useState("conflicts");
