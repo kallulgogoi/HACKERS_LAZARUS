@@ -61,7 +61,6 @@ const App = () => {
   const PHARMA_API_URL =
     import.meta.env.VITE_PHARMA_URL || "http://127.0.0.1:8001";
 
-  // NEW: Tab State for the API Panel
   const [activeTab, setActiveTab] = useState("conflicts");
 
   const [pharmaData, setPharmaData] = useState({
