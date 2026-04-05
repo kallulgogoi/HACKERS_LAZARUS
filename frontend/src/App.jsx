@@ -61,6 +61,9 @@ const App = () => {
   const PHARMA_API_URL =
     import.meta.env.VITE_PHARMA_URL || "http://127.0.0.1:8001";
 
+  // NEW: Tab State for the API Panel
+  const [activeTab, setActiveTab] = useState("conflicts");
+
   const [pharmaData, setPharmaData] = useState({
     decoded_drugs: [],
     valid_drugs: [],
@@ -69,6 +72,7 @@ const App = () => {
     conflicts: [],
     risk_score: 0,
     risk_level: "UNKNOWN",
+    recommendations: [],
     network_risk_score: 0,
     network_risk_level: "UNKNOWN",
     isProcessing: false,
@@ -145,31 +149,22 @@ const App = () => {
     [hasMore, fetchPatients, deferredQuery, patients.length],
   );
 
-  // ==========================================
-  // 🚨 HACKATHON SAFEGUARD INTERCEPTOR 🚨
-  // ==========================================
   const activePatient = useMemo(() => {
     if (!selectedPatient) return null;
     const patientCopy = { ...selectedPatient };
 
-    // If backend failed to link prescriptions and sends the dummy string, force a real payload.
     if (
       !patientCopy.scrambled_med ||
       patientCopy.scrambled_med.toLowerCase() === "vtyvshasv"
     ) {
-      // This payload forces Insulin, Metformin, and Amoxicillin into the pipeline.
       patientCopy.scrambled_med = "LQVXOLQ, HZOAJMHDI, XJLUFZFIIFK";
     }
     return patientCopy;
   }, [selectedPatient]);
 
-  // ==========================================
-  // PHARMA ENGINE FETCH (Hits indexnew.py)
-  // ==========================================
   useEffect(() => {
     if (!activePatient) return;
 
-    // Send the intercepted strings!
     const drugList = getRawDrugList(activePatient.scrambled_med);
     setPharmaData((prev) => ({ ...prev, isProcessing: true, error: null }));
 
@@ -187,6 +182,7 @@ const App = () => {
           warnings: data.warnings || [],
           conflicts: data.conflicts || [],
           risk_score: data.risk_score || 0,
+          recommendations: data.recommendations || [],
           risk_level: data.risk_level || "LOW",
           network_risk_score: data.network_risk_score || 0,
           network_risk_level: data.network_risk_level || "LOW",
@@ -243,14 +239,13 @@ const App = () => {
     setTelemetry((prev) => [...prev.slice(-30), newData]);
   }, [activePatient?.ghost_id, activePatient?.bpm, activePatient?.spo2]);
 
-  // Graph Nodes Calculator
   const graphNodes = useMemo(() => {
     const allDrugs = [...pharmaData.valid_drugs, ...pharmaData.invalid_drugs];
     if (!activePatient || allDrugs.length === 0) return null;
 
     const cx = 200;
-    const cy = 125;
-    const radius = 85;
+    const cy = 135; // slightly lower center for better spacing
+    const radius = 95; // wider radius
 
     const nodes = allDrugs.map((drug, i) => {
       const angle = (i / allDrugs.length) * 2 * Math.PI - Math.PI / 2;
@@ -380,38 +375,37 @@ const App = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 1. INTERACTION GRAPH */}
-                <Card className="shadow-sm border-2 border-indigo-500/20 bg-indigo-500/5">
-                  <CardHeader className="pb-2">
+                {/* 1. POLISHED INTERACTION GRAPH */}
+                <Card className="shadow-lg border-2 border-slate-200/20 dark:border-slate-800 flex flex-col">
+                  <CardHeader className="pb-4 bg-muted/30 border-b">
                     <CardTitle className="flex items-center justify-between text-lg font-bold">
                       <div className="flex items-center gap-2">
                         <Network className="h-5 w-5 text-indigo-500" />
-                        Medication Conflict Graph
+                        Conflict Graph
                       </div>
                       {pharmaData.isProcessing ? (
                         <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
                       ) : (
                         <Badge
-                          variant="outline"
-                          className={
+                          className={`shadow-sm px-3 py-1 font-bold ${
                             pharmaData.network_risk_level === "HIGH RISK" ||
                             pharmaData.network_risk_level === "LETHAL"
-                              ? "border-red-500 text-red-500"
-                              : "border-indigo-500/30"
-                          }
+                              ? "bg-red-500 hover:bg-red-600 text-white border-transparent"
+                              : "bg-indigo-500 hover:bg-indigo-600 text-white border-transparent"
+                          }`}
                         >
-                          Level: {pharmaData.network_risk_level}
+                          {pharmaData.network_risk_level}
                         </Badge>
                       )}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="h-[250px] w-full border border-indigo-500/20 border-dashed rounded-md flex items-center justify-center bg-background/50 relative overflow-hidden">
+                  <CardContent className="p-0 flex-1 relative bg-gradient-to-br from-indigo-500/5 to-background">
+                    <div className="h-[360px] w-full flex items-center justify-center relative overflow-hidden">
                       {pharmaData.isProcessing ? (
                         <Network className="h-10 w-10 opacity-20 animate-pulse text-indigo-500" />
                       ) : graphNodes ? (
                         <svg
-                          viewBox="0 0 400 250"
+                          viewBox="0 0 400 270"
                           className="w-full h-full overflow-visible"
                         >
                           {graphNodes.nodes.map((node) => (
@@ -422,9 +416,9 @@ const App = () => {
                               x2={node.x}
                               y2={node.y}
                               stroke="currentColor"
-                              strokeWidth="1"
+                              strokeWidth="1.5"
                               strokeDasharray="4 4"
-                              className="opacity-20"
+                              className="opacity-10"
                             />
                           ))}
 
@@ -447,8 +441,8 @@ const App = () => {
                                 x2={n2.x}
                                 y2={n2.y}
                                 stroke={isHighRisk ? "#ef4444" : "#f59e0b"}
-                                strokeWidth="2.5"
-                                className="animate-pulse"
+                                strokeWidth="3"
+                                className="animate-pulse shadow-xl drop-shadow-lg"
                               />
                             );
                           })}
@@ -456,20 +450,26 @@ const App = () => {
                           {graphNodes.nodes.map((node) => (
                             <foreignObject
                               key={`node-${node.id}`}
-                              x={node.x - 50}
-                              y={node.y - 14}
-                              width="100"
-                              height="28"
+                              x={node.x - 55}
+                              y={node.y - 16}
+                              width="110"
+                              height="32"
                               className="overflow-visible"
                             >
                               <div className="flex items-center justify-center h-full w-full">
                                 <div
-                                  className={`bg-background border text-[10px] font-mono px-2 py-1 rounded-md flex items-center shadow-sm ${!node.isValid ? "border-red-500 text-red-500" : "border-indigo-500/40"}`}
+                                  className={`bg-background border-2 text-[10px] font-bold px-2 py-1.5 rounded-md flex items-center shadow-md transition-all ${
+                                    !node.isValid
+                                      ? "border-red-500 text-red-500"
+                                      : "border-indigo-500/30 text-foreground"
+                                  }`}
                                 >
                                   <Pill
-                                    className={`h-3 w-3 mr-1 ${!node.isValid ? "text-red-500" : "text-indigo-500"}`}
+                                    className={`h-3.5 w-3.5 mr-1.5 ${!node.isValid ? "text-red-500" : "text-indigo-500"}`}
                                   />
-                                  <span className="truncate">{node.id}</span>
+                                  <span className="truncate tracking-wide">
+                                    {node.id}
+                                  </span>
                                 </div>
                               </div>
                             </foreignObject>
@@ -477,21 +477,22 @@ const App = () => {
 
                           <foreignObject
                             x={graphNodes.cx - 60}
-                            y={graphNodes.cy - 16}
+                            y={graphNodes.cy - 18}
                             width="120"
-                            height="32"
+                            height="36"
                             className="overflow-visible"
                           >
                             <div className="flex items-center justify-center h-full w-full">
-                              <div className="bg-primary text-primary-foreground border-2 border-background text-[11px] uppercase tracking-wider font-bold px-3 py-1.5 rounded-full shadow-md flex items-center">
-                                <User className="h-3.5 w-3.5 mr-1.5 opacity-80" />
+                              <div className="bg-primary text-primary-foreground border-[3px] border-background text-[11px] uppercase tracking-widest font-black px-4 py-2 rounded-full shadow-lg flex items-center">
+                                <User className="h-4 w-4 mr-2 opacity-90" />
                                 {activePatient.decoded_name.split(" ")[0]}
                               </div>
                             </div>
                           </foreignObject>
                         </svg>
                       ) : (
-                        <div className="text-[11px] font-mono uppercase tracking-widest opacity-50">
+                        <div className="text-[11px] font-mono uppercase tracking-widest opacity-50 flex flex-col items-center gap-2">
+                          <Database className="h-6 w-6 opacity-50" />
                           No Graph Data
                         </div>
                       )}
@@ -499,109 +500,214 @@ const App = () => {
                   </CardContent>
                 </Card>
 
-                {/* 2. PRESCRIPTION VALIDATION API */}
-                <Card className="shadow-sm border-2 border-emerald-500/20 bg-emerald-500/5">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-lg font-bold">
-                      <FlaskConical className="h-5 w-5 text-emerald-500" />
-                      Prescription Validation API
-                    </CardTitle>
+                {/* 2. TABBED PRESCRIPTION VALIDATION API */}
+                <Card className="shadow-lg border-2 border-slate-200/20 dark:border-slate-800 flex flex-col overflow-hidden">
+                  <CardHeader className="pb-0 bg-muted/30 border-b">
+                    <div className="flex items-center justify-between mb-4">
+                      <CardTitle className="flex items-center gap-2 text-lg font-bold">
+                        <FlaskConical className="h-5 w-5 text-primary" />
+                        Prescription Analysis
+                      </CardTitle>
+                      <div className="flex items-center gap-2 text-xs font-mono">
+                        {pharmaData.isProcessing ? (
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" />{" "}
+                            Processing...
+                          </span>
+                        ) : (
+                          <span className="text-emerald-500 flex items-center gap-1">
+                            <Database className="h-3 w-3" /> Connected
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* UI TABS FOR SWITCHING VIEWS */}
+                    <div className="flex gap-6">
+                      <button
+                        onClick={() => setActiveTab("conflicts")}
+                        className={`pb-3 text-sm font-bold border-b-[3px] transition-colors flex items-center gap-2 ${
+                          activeTab === "conflicts"
+                            ? "border-red-500 text-red-500"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Conflicts Found
+                        <Badge
+                          variant="secondary"
+                          className={`ml-1 ${activeTab === "conflicts" ? "bg-red-500/10 text-red-500" : ""}`}
+                        >
+                          {pharmaData.conflicts.length}
+                        </Badge>
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("recommendations")}
+                        className={`pb-3 text-sm font-bold border-b-[3px] transition-colors flex items-center gap-2 ${
+                          activeTab === "recommendations"
+                            ? "border-emerald-500 text-emerald-500"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Safe Swaps
+                        <Badge
+                          variant="secondary"
+                          className={`ml-1 ${activeTab === "recommendations" ? "bg-emerald-500/10 text-emerald-500" : ""}`}
+                        >
+                          {pharmaData.recommendations.length}
+                        </Badge>
+                      </button>
+                    </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="h-[250px] w-full border border-emerald-500/20 rounded-md bg-slate-950 text-emerald-500 p-4 font-mono text-[11px] overflow-y-auto flex flex-col relative shadow-inner">
+
+                  <CardContent className="p-0 flex-1 flex flex-col bg-background">
+                    <div className="h-[280px] overflow-y-auto p-4">
                       {pharmaData.isProcessing ? (
-                        <div className="flex items-center justify-center h-full opacity-50 gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin" />{" "}
-                          Computing...
+                        <div className="flex items-center justify-center h-full opacity-50 gap-2 font-mono text-sm">
+                          <Loader2 className="h-5 w-5 animate-spin" /> Analyzing
+                          pathways...
                         </div>
                       ) : pharmaData.error ? (
-                        <div className="flex items-center justify-center h-full text-red-500 gap-2">
-                          <ServerCrash className="h-5 w-5" /> {pharmaData.error}
+                        <div className="flex items-center justify-center h-full text-red-500 gap-2 font-bold">
+                          <ServerCrash className="h-6 w-6" /> {pharmaData.error}
                         </div>
-                      ) : (
-                        <>
-                          <div className="font-bold mb-3 flex items-center gap-2 text-emerald-400">
-                            <span className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_5px_rgba(52,211,153,0.6)]"></span>
-                            API RESPONSE LOG
+                      ) : activeTab === "conflicts" ? (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          {/* Drug Summary */}
+                          <div className="flex flex-wrap gap-2 pb-3 border-b border-dashed border-muted">
+                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest mr-2 flex items-center">
+                              Detected:
+                            </span>
+                            {pharmaData.valid_drugs.map((d, i) => (
+                              <Badge
+                                key={i}
+                                variant="secondary"
+                                className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20"
+                              >
+                                {d}
+                              </Badge>
+                            ))}
+                            {pharmaData.invalid_drugs.map((d, i) => (
+                              <Badge
+                                key={i}
+                                variant="secondary"
+                                className="bg-red-500/10 text-red-600 line-through border border-red-500/20 opacity-80"
+                              >
+                                {d}
+                              </Badge>
+                            ))}
                           </div>
 
-                          <div className="space-y-1.5 opacity-90 pb-4">
-                            <div>
-                              <span className="opacity-50">~%</span>{" "}
-                              Valid_Drugs:{" "}
-                              <span className="text-slate-300">
-                                [{pharmaData.valid_drugs.join(", ")}]
-                              </span>
+                          {/* Warnings */}
+                          {pharmaData.warnings.map((w, i) => (
+                            <div
+                              key={`w-${i}`}
+                              className="flex items-start gap-2 text-amber-600 bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-md text-xs font-bold"
+                            >
+                              <AlertCircle className="h-4 w-4 shrink-0" /> {w}
                             </div>
+                          ))}
 
-                            {pharmaData.invalid_drugs.length > 0 && (
-                              <div>
-                                <span className="opacity-50">~%</span>{" "}
-                                Invalid_Drugs:{" "}
-                                <span className="text-red-400">
-                                  [{pharmaData.invalid_drugs.join(", ")}]
-                                </span>
-                              </div>
-                            )}
-
-                            {pharmaData.warnings.map((w, i) => (
-                              <div key={i}>
-                                <span className="opacity-50">~%</span> Warning:{" "}
-                                <span className="text-amber-400">{w}</span>
-                              </div>
-                            ))}
-
-                            <div className="pt-2">
-                              <span className="opacity-50">~%</span>{" "}
-                              Conflicts_Found:{" "}
-                              <span className="text-amber-400">
-                                {pharmaData.conflicts.length}
-                              </span>
+                          {/* Conflicts List */}
+                          {pharmaData.conflicts.length === 0 ? (
+                            <div className="text-center text-muted-foreground py-8 text-sm flex flex-col items-center gap-2">
+                              <Activity className="h-8 w-8 opacity-20" />
+                              No hazardous interactions detected.
                             </div>
-
-                            {pharmaData.conflicts.map((c, i) => (
+                          ) : (
+                            pharmaData.conflicts.map((c, i) => (
                               <div
                                 key={i}
-                                className="pl-4 text-amber-500 border-l border-amber-500/30 ml-2 mt-1 py-1"
+                                className="bg-red-500/5 border border-red-500/20 rounded-lg p-4 relative overflow-hidden shadow-sm"
                               >
-                                <span className="font-bold">
-                                  {c.drug1} + {c.drug2}
-                                </span>{" "}
-                                [{c.severity}]<br />
-                                <span className="opacity-80 text-[10px]">
+                                <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="font-black text-red-600 dark:text-red-400 text-sm flex items-center gap-2 tracking-wide ml-2">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    {c.drug1}{" "}
+                                    <span className="text-red-400/50">+</span>{" "}
+                                    {c.drug2}
+                                  </div>
+                                  <Badge
+                                    className={`uppercase text-[10px] tracking-widest font-black ${c.severity === "lethal" ? "bg-red-600 text-white" : "bg-amber-500 text-white"}`}
+                                  >
+                                    {c.severity}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground font-medium leading-relaxed ml-8">
                                   {c.reason}
-                                </span>
+                                </p>
                               </div>
-                            ))}
-
-                            <div className="pt-2">
-                              <span className="opacity-50">~%</span>{" "}
-                              Base_Risk_Score:{" "}
-                              <span className="text-slate-300">
-                                {pharmaData.risk_score}
-                              </span>
+                            ))
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          {/* Recommendations List */}
+                          {pharmaData.recommendations.length === 0 ? (
+                            <div className="text-center text-muted-foreground py-8 text-sm flex flex-col items-center gap-2">
+                              <Activity className="h-8 w-8 opacity-20" />
+                              No swaps required.
                             </div>
-                            <div>
-                              <span className="opacity-50">~%</span>{" "}
-                              Net_Risk_Score:{" "}
-                              <span className="text-slate-300">
-                                {pharmaData.network_risk_score}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="mt-auto pt-3 border-t border-emerald-900 flex justify-between items-center text-xs">
-                            <span className="opacity-50">
-                              FINAL ASSESSMENT:
-                            </span>
-                            <span
-                              className={`font-black tracking-wider ${pharmaData.network_risk_level !== "LOW" ? "text-red-500" : "text-emerald-400"}`}
-                            >
-                              [{pharmaData.network_risk_level}]
-                            </span>
-                          </div>
-                        </>
+                          ) : (
+                            pharmaData.recommendations.map((rec, i) => (
+                              <div
+                                key={`rec-${i}`}
+                                className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-4 relative overflow-hidden shadow-sm"
+                              >
+                                <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500"></div>
+                                <div className="flex items-center flex-wrap gap-3 mb-3 ml-2">
+                                  <div className="px-3 py-1.5 bg-red-500/10 text-red-600 border border-red-500/20 rounded-md text-xs font-bold line-through decoration-red-500/50">
+                                    {rec.original}
+                                  </div>
+                                  <div className="text-emerald-500 font-bold text-lg">
+                                    ➔
+                                  </div>
+                                  <div className="px-3 py-1.5 bg-emerald-500 text-white shadow-sm rounded-md text-xs font-black tracking-wide flex items-center gap-1.5">
+                                    <Pill className="h-3 w-3" />
+                                    {rec.alternative}
+                                  </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground font-medium leading-relaxed ml-2">
+                                  <strong className="text-emerald-600 dark:text-emerald-400">
+                                    Reasoning:
+                                  </strong>{" "}
+                                  {rec.reason}
+                                </p>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       )}
+                    </div>
+
+                    {/* Footer Console Stats */}
+                    <div className="text-black p-4 mt-auto text-[11px] font-mono flex flex-col md:flex-row justify-between items-start md:items-center  gap-3 border-t-4 border-slate-900">
+                      <div className="flex items-center gap-5">
+                        <span className="flex items-center gap-1.5 border border-black rounded-lg p-2">
+                          <span>SYS_RISK:</span>
+                          <span className="text-black font-bold text-sm">
+                            {pharmaData.risk_score}
+                          </span>
+                        </span>
+                        <span className="flex items-center border border-black rounded-lg p-2 gap-1.5">
+                          <span>NET_RISK:</span>
+                          <span className="text-black font-bold text-sm">
+                            {pharmaData.network_risk_score}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2  px-3 py-2.5 rounded-md border border-black shadow-inner">
+                        <span>FINAL ASSESSMENT:</span>
+                        <span
+                          className={`font-black tracking-widest text-xs ${
+                            pharmaData.network_risk_level !== "LOW"
+                              ? "text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                              : "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]"
+                          }`}
+                        >
+                          [{pharmaData.network_risk_level}]
+                        </span>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
