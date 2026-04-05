@@ -1,14 +1,17 @@
 import sys
 import os
 
-sys.path.append(os.getcwd())
+# --- VERCEL-SPECIFIC PATH FIX ---
+# This looks one level up from 'api/pharma.py' to find 'PHARMA_ENGINE' and 'modules'
+# This is more reliable than os.getcwd() for serverless functions
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 
-# These imports now work because of the sys.path.append above
+# These imports now work because the root is added to sys.path
 from PHARMA_ENGINE.modules.risk_engine import risk_level
 from processing.pipeline import process_prescription
 from PHARMA_ENGINE.modules.database_loader import DB_PATH, DrugDatabase
@@ -26,6 +29,7 @@ app.add_middleware(
 )
 
 # Initialize Engines
+# Ensure DB_PATH inside database_loader is also absolute
 db = DrugDatabase(DB_PATH)
 graph_engine = DrugGraph(DB_PATH)
 
@@ -114,7 +118,6 @@ def get_drug_info(drug_name: str):
 
 @app.post("/graph-insights")
 def graph_insights(request: PrescriptionRequest):
-    # Crack the code for the graph endpoint
     real_drugs = [brute_force_decrypt(d.upper(), db) for d in request.drugs]
 
     subgraph = graph_engine.get_subgraph(real_drugs)
