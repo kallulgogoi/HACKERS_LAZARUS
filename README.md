@@ -106,7 +106,7 @@ The frontend is a medical-grade dashboard built with **React JS**, **Tailwind CS
 ### **Frontend Deployment (Vercel)**
 1. Import the `frontend` folder into Vercel.
 2. Set **Framework Preset** to `Vite`.
-3. Update `API_BASE_URL` and `PHARMA_API_URL` in your `App.jsx` with your unique Render links.
+3. Update `API_BASE_URL` and `PHARMA_API_URL` in your `App.jsx` with your unique Render links..
 
 ---
 
